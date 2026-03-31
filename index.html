@@ -206,16 +206,18 @@ chunks=[]
 
 rec.ondataavailable=e=>chunks.push(e.data)
 
-rec.onstop=()=>{
+rec.onstop = () => {
 
-const blob=new Blob(chunks,{type:"audio/webm"})
+  const blob = new Blob(chunks,{type:"audio/mp4"})
 
-audio=new Audio(URL.createObjectURL(blob))
+  const url = URL.createObjectURL(blob)
 
-audio.loop=true
+  audio = new Audio(url)
 
-document.getElementById("playBtn").disabled=false
+  audio.loop = true
+  audio.preload = "auto"
 
+  document.getElementById("playBtn").disabled = false
 }
 
 rec.start()
