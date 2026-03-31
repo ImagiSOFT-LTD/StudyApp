@@ -21,17 +21,17 @@
 <style>
 
 :root {
---bg: #0d0f0e;
---surface: #141714;
---border: rgba(255,255,255,0.07);
---accent: #b8f07a;
---accent-dim: rgba(184,240,122,0.15);
---danger: #f07a7a;
---text-hi: #eef0ec;
---text-lo: #6b7068;
---radius: 18px;
---font-display: 'DM Serif Display', serif;
---font-mono: 'DM Mono', monospace;
+--bg:#0d0f0e;
+--surface:#141714;
+--border:rgba(255,255,255,0.07);
+--accent:#b8f07a;
+--accent-dim:rgba(184,240,122,0.15);
+--danger:#f07a7a;
+--text-hi:#eef0ec;
+--text-lo:#6b7068;
+--radius:18px;
+--font-display:'DM Serif Display',serif;
+--font-mono:'DM Mono',monospace;
 }
 
 body{
@@ -103,7 +103,7 @@ font-size:22px;
 
 .btn-grid{
 display:grid;
-grid-template-columns:1fr 1fr;
+grid-template-columns:1fr 1fr 1fr;
 gap:12px;
 width:100%;
 max-width:400px;
@@ -164,13 +164,11 @@ opacity:0.2;
 
 <div class="btn-grid">
 
-<button class="btn btn-rec" onclick="toggleRec()" id="recBtn">
-Record
-</button>
+<button class="btn btn-rec" onclick="toggleRec()" id="recBtn">Record</button>
 
-<button class="btn btn-play" onclick="togglePlay()" id="playBtn" disabled>
-Play
-</button>
+<button class="btn btn-play" onclick="togglePlay()" id="playBtn" disabled>Play</button>
+
+<button class="btn" onclick="saveAudio()" id="saveBtn" disabled>Save</button>
 
 </div>
 
@@ -179,6 +177,7 @@ Play
 let rec
 let chunks=[]
 let audio
+let recordedBlob=null
 let timer
 let sec=0
 
@@ -200,32 +199,40 @@ document.getElementById("recBtn").innerText="Record"
 
 const stream=await navigator.mediaDevices.getUserMedia({audio:true})
 
-rec=new MediaRecorder(stream)
+let options={}
+
+if(MediaRecorder.isTypeSupported("audio/mp4")){
+options.mimeType="audio/mp4"
+}else if(MediaRecorder.isTypeSupported("audio/webm")){
+options.mimeType="audio/webm"
+}
+
+rec=new MediaRecorder(stream,options)
 
 chunks=[]
 
-rec.ondataavailable=e=>chunks.push(e.data)
+rec.ondataavailable=e=>{
+if(e.data.size>0)chunks.push(e.data)
+}
 
-rec.onstop = () => {
+rec.onstop=()=>{
 
-  const blob = new Blob(chunks,{type:"audio/mp4"})
+recordedBlob=new Blob(chunks,{type:rec.mimeType})
 
-  const url = URL.createObjectURL(blob)
+const url=URL.createObjectURL(recordedBlob)
 
-  audio = new Audio(url)
+audio=new Audio(url)
+audio.loop=true
 
-  audio.loop = true
-  audio.preload = "auto"
+document.getElementById("playBtn").disabled=false
+document.getElementById("saveBtn").disabled=false
 
-  document.getElementById("playBtn").disabled = false
 }
 
 rec.start()
 
 sec=0
-
 status.innerText="RECORDING"
-
 document.getElementById("recBtn").innerText="Stop"
 
 timer=setInterval(()=>{
@@ -249,20 +256,32 @@ if(!audio)return
 if(audio.paused){
 
 audio.play()
-
 status.innerText="LOOPING"
-
 document.getElementById("playBtn").innerText="Pause"
 
 }else{
 
 audio.pause()
-
 status.innerText="PAUSED"
-
 document.getElementById("playBtn").innerText="Play"
 
 }
+
+}
+
+function saveAudio(){
+
+if(!recordedBlob)return
+
+const url=URL.createObjectURL(recordedBlob)
+
+const a=document.createElement("a")
+a.href=url
+a.download="studyloop-recording.m4a"
+
+document.body.appendChild(a)
+a.click()
+document.body.removeChild(a)
 
 }
 
