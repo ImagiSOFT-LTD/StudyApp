@@ -52,7 +52,7 @@ box-sizing:border-box;
 }
 
 .header h1{
-font-family:var(---display);
+font-family:var(--font-display);
 font-size:32px;
 font-weight:400;
 margin:0;
@@ -257,7 +257,7 @@ let recordedBlob=null
 let timer
 let sec=0
 let mimeType=""
-let directoryHandle=null
+let saveExt=""
 
 const prog=document.getElementById("prog")
 const time=document.getElementById("time")
@@ -265,6 +265,30 @@ const status=document.getElementById("status")
 const speedSlider=document.getElementById("speed")
 const speedLabel=document.getElementById("speedLabel")
 const uploadInput=document.getElementById("uploadInput")
+
+// Detect Safari / iOS — they only support audio/mp4
+const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent)
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)
+
+function pickMimeType(){
+  // Safari and iOS only support audio/mp4 (AAC) — using it explicitly
+  // ensures the file is saved as a proper audio container (.m4a)
+  if(isSafari || isIOS){
+    if(MediaRecorder.isTypeSupported("audio/mp4;codecs=mp4a.40.2")) return {mime:"audio/mp4;codecs=mp4a.40.2", ext:"m4a"}
+    if(MediaRecorder.isTypeSupported("audio/mp4")) return {mime:"audio/mp4", ext:"m4a"}
+  }
+  // Chrome / Firefox / Edge prefer opus in webm
+  const candidates=[
+    {mime:"audio/webm;codecs=opus", ext:"webm"},
+    {mime:"audio/webm",             ext:"webm"},
+    {mime:"audio/ogg;codecs=opus",  ext:"ogg"},
+    {mime:"audio/mp4",              ext:"m4a"}
+  ]
+  for(const c of candidates){
+    if(MediaRecorder.isTypeSupported(c.mime)) return c
+  }
+  return {mime:"", ext:"webm"}
+}
 
 function updateTimer(){
 
@@ -290,27 +314,13 @@ document.getElementById("recBtn").innerText="Record"
 
 }else{
 
-const stream=await navigator.mediaDevices.getUserMedia({audio:true})
+const stream=await navigator.mediaDevices.getUserMedia({audio:true, video:false})
 
-// Force audio-only MIME types (no video)
-const types=[
-"audio/webm;codecs=opus",
-"audio/webm",
-"audio/ogg;codecs=opus"
-]
+const chosen=pickMimeType()
+mimeType=chosen.mime
+saveExt=chosen.ext
 
-mimeType=""
-for(let t of types){
-if(MediaRecorder.isTypeSupported(t)){
-mimeType=t
-break
-}
-}
-
-// Fallback to default if none supported
-if(!mimeType) mimeType="audio/webm"
-
-rec=new MediaRecorder(stream, {mimeType})
+rec=new MediaRecorder(stream, mimeType ? {mimeType} : {})
 
 chunks=[]
 
@@ -320,8 +330,7 @@ if(e.data.size>0) chunks.push(e.data)
 
 rec.onstop=()=>{
 
-// Create blob with proper audio MIME type
-recordedBlob=new Blob(chunks, {type: mimeType})
+recordedBlob=new Blob(chunks, {type: mimeType || "audio/webm"})
 
 const url=URL.createObjectURL(recordedBlob)
 
@@ -376,18 +385,15 @@ document.getElementById("playBtn").innerText="Play"
 
 function startOver(){
 
-// Stop and clean up audio
 if(audio){
 audio.pause()
 audio=null
 }
 
-// Reset recording
 recordedBlob=null
 chunks=[]
 sec=0
 
-// Reset UI
 time.innerText="0:00"
 prog.style.strokeDashoffset=565
 status.innerText="READY"
@@ -404,24 +410,22 @@ async function saveAudio(){
 
 if(!recordedBlob) return
 
-// Try modern File System Access API first
+const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
+const filename=`studyloop-${timestamp}.${saveExt}`
+
+// Try modern File System Access API first (desktop browsers)
 if("showSaveFilePicker" in window){
 
 try{
 
-// Determine file extension from MIME type
-let ext="webm"
-if(mimeType.includes("ogg")) ext="ogg"
-
-const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
-const filename=`studyloop-${timestamp}.${ext}`
+const acceptMap={}
+if(saveExt==="m4a") acceptMap["audio/mp4"]=[".m4a"]
+else if(saveExt==="ogg") acceptMap["audio/ogg"]=[".ogg"]
+else acceptMap["audio/webm"]=[".webm"]
 
 const handle=await window.showSaveFilePicker({
 suggestedName:filename,
-types:[{
-description:"Audio Files",
-accept:{"audio/webm":[".webm"], "audio/ogg":[".ogg"]}
-}]
+types:[{description:"Audio File", accept:acceptMap}]
 })
 
 const writable=await handle.createWritable()
@@ -429,71 +433,45 @@ await writable.write(recordedBlob)
 await writable.close()
 
 status.innerText="SAVED"
-
-setTimeout(()=>{
-status.innerText="READY"
-},2000)
-
+setTimeout(()=>{ status.innerText="READY" },2000)
 return
 
 }catch(err){
-// User cancelled or error occurred, fall through to legacy method
 console.log("Save picker cancelled or failed:",err)
 }
 
 }
 
-// Fallback: classic download (no folder control)
+// Fallback: trigger download link
 const url=URL.createObjectURL(recordedBlob)
-
 const a=document.createElement("a")
-
 a.href=url
-
-let ext="webm"
-if(mimeType.includes("ogg")) ext="ogg"
-
-const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
-a.download=`studyloop-${timestamp}.${ext}`
-
+a.download=filename
 document.body.appendChild(a)
-
 a.click()
-
 document.body.removeChild(a)
-
 URL.revokeObjectURL(url)
 
 status.innerText="DOWNLOADED"
-
-setTimeout(()=>{
-status.innerText="READY"
-},2000)
+setTimeout(()=>{ status.innerText="READY" },2000)
 
 }
 
 uploadInput.addEventListener("change",function(){
 
 const file=this.files[0]
-
 if(!file) return
 
-// Stop current audio if playing
-if(audio){
-audio.pause()
-}
+if(audio) audio.pause()
 
 const url=URL.createObjectURL(file)
 
 audio=new Audio(url)
-
 audio.loop=true
 audio.playbackRate=parseFloat(speedSlider.value)
 
-// Reset recording state when uploading
 recordedBlob=null
 
-// Enable play and reset, disable save (since this is uploaded, not recorded)
 document.getElementById("playBtn").disabled=false
 document.getElementById("playBtn").innerText="Play"
 document.getElementById("saveBtn").disabled=true
@@ -501,7 +479,6 @@ document.getElementById("resetBtn").disabled=false
 
 status.innerText="AUDIO LOADED"
 
-// Reset timer display
 sec=0
 time.innerText="0:00"
 prog.style.strokeDashoffset=565
@@ -511,9 +488,7 @@ prog.style.strokeDashoffset=565
 speedSlider.addEventListener("input",()=>{
 
 const rate=parseFloat(speedSlider.value)
-
 speedLabel.innerText=rate.toFixed(1)+"×"
-
 if(audio) audio.playbackRate=rate
 
 })
