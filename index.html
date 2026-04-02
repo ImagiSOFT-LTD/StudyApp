@@ -52,7 +52,7 @@ box-sizing:border-box;
 }
 
 .header h1{
-font-family:var(--font-display);
+font-family:var(---display);
 font-size:32px;
 font-weight:400;
 margin:0;
@@ -182,6 +182,14 @@ border-color:var(--accent-dim);
 opacity:.2;
 }
 
+.btn-reset{
+color:var(--text-lo);
+border-color:var(--border);
+font-size:9px;
+padding:14px;
+margin-top:8px;
+}
+
 </style>
 
 </head>
@@ -196,7 +204,7 @@ opacity:.2;
 
 </div>
 
-<input type="file" id="uploadInput" accept="audio/*,.mp3,.m4a,.m4b,.ogg,.wav,.aac,.flac" multiple style="display:none">
+<input type="file" id="uploadInput" accept="audio/*,.mp3,.m4a,.m4b,.ogg,.wav,.aac,.flac" style="display:none">
 
 <div class="header">
 <h1>Study<span>Loop</span></h1>
@@ -237,6 +245,8 @@ opacity:.2;
 <button class="btn btn-play" onclick="togglePlay()" id="playBtn" disabled>Play</button>
 
 </div>
+
+<button class="btn btn-reset" onclick="startOver()" id="resetBtn" disabled>Start Over</button>
 
 <script>
 
@@ -282,13 +292,11 @@ document.getElementById("recBtn").innerText="Record"
 
 const stream=await navigator.mediaDevices.getUserMedia({audio:true})
 
-// Determine best MIME type for recording
+// Force audio-only MIME types (no video)
 const types=[
 "audio/webm;codecs=opus",
 "audio/webm",
-"audio/ogg;codecs=opus",
-"audio/mp4",
-"audio/mpeg"
+"audio/ogg;codecs=opus"
 ]
 
 mimeType=""
@@ -299,7 +307,10 @@ break
 }
 }
 
-rec=new MediaRecorder(stream, mimeType ? {mimeType} : {})
+// Fallback to default if none supported
+if(!mimeType) mimeType="audio/webm"
+
+rec=new MediaRecorder(stream, {mimeType})
 
 chunks=[]
 
@@ -309,8 +320,8 @@ if(e.data.size>0) chunks.push(e.data)
 
 rec.onstop=()=>{
 
-// Create blob with proper MIME type
-recordedBlob=new Blob(chunks, {type: mimeType || "audio/webm"})
+// Create blob with proper audio MIME type
+recordedBlob=new Blob(chunks, {type: mimeType})
 
 const url=URL.createObjectURL(recordedBlob)
 
@@ -321,6 +332,7 @@ audio.playbackRate=parseFloat(speedSlider.value)
 
 document.getElementById("playBtn").disabled=false
 document.getElementById("saveBtn").disabled=false
+document.getElementById("resetBtn").disabled=false
 
 }
 
@@ -362,6 +374,32 @@ document.getElementById("playBtn").innerText="Play"
 
 }
 
+function startOver(){
+
+// Stop and clean up audio
+if(audio){
+audio.pause()
+audio=null
+}
+
+// Reset recording
+recordedBlob=null
+chunks=[]
+sec=0
+
+// Reset UI
+time.innerText="0:00"
+prog.style.strokeDashoffset=565
+status.innerText="READY"
+
+document.getElementById("playBtn").disabled=true
+document.getElementById("playBtn").innerText="Play"
+document.getElementById("saveBtn").disabled=true
+document.getElementById("resetBtn").disabled=true
+document.getElementById("recBtn").innerText="Record"
+
+}
+
 async function saveAudio(){
 
 if(!recordedBlob) return
@@ -373,9 +411,7 @@ try{
 
 // Determine file extension from MIME type
 let ext="webm"
-if(mimeType.includes("mp4")) ext="m4a"
-else if(mimeType.includes("mpeg")) ext="mp3"
-else if(mimeType.includes("ogg")) ext="ogg"
+if(mimeType.includes("ogg")) ext="ogg"
 
 const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
 const filename=`studyloop-${timestamp}.${ext}`
@@ -384,7 +420,7 @@ const handle=await window.showSaveFilePicker({
 suggestedName:filename,
 types:[{
 description:"Audio Files",
-accept:{"audio/*":[`.${ext}`]}
+accept:{"audio/webm":[".webm"], "audio/ogg":[".ogg"]}
 }]
 })
 
@@ -415,9 +451,7 @@ const a=document.createElement("a")
 a.href=url
 
 let ext="webm"
-if(mimeType.includes("mp4")) ext="m4a"
-else if(mimeType.includes("mpeg")) ext="mp3"
-else if(mimeType.includes("ogg")) ext="ogg"
+if(mimeType.includes("ogg")) ext="ogg"
 
 const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
 a.download=`studyloop-${timestamp}.${ext}`
@@ -444,6 +478,11 @@ const file=this.files[0]
 
 if(!file) return
 
+// Stop current audio if playing
+if(audio){
+audio.pause()
+}
+
 const url=URL.createObjectURL(file)
 
 audio=new Audio(url)
@@ -451,9 +490,21 @@ audio=new Audio(url)
 audio.loop=true
 audio.playbackRate=parseFloat(speedSlider.value)
 
+// Reset recording state when uploading
+recordedBlob=null
+
+// Enable play and reset, disable save (since this is uploaded, not recorded)
 document.getElementById("playBtn").disabled=false
+document.getElementById("playBtn").innerText="Play"
+document.getElementById("saveBtn").disabled=true
+document.getElementById("resetBtn").disabled=false
 
 status.innerText="AUDIO LOADED"
+
+// Reset timer display
+sec=0
+time.innerText="0:00"
+prog.style.strokeDashoffset=565
 
 })
 
