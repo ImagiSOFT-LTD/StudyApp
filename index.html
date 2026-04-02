@@ -196,7 +196,7 @@ opacity:.2;
 
 </div>
 
-<input type="file" id="uploadInput" accept="audio/*" capture style="display:none">
+<input type="file" id="uploadInput" accept="audio/*,.mp3,.m4a,.m4b,.ogg,.wav,.aac,.flac" multiple style="display:none">
 
 <div class="header">
 <h1>Study<span>Loop</span></h1>
@@ -246,6 +246,8 @@ let audio=null
 let recordedBlob=null
 let timer
 let sec=0
+let mimeType=""
+let directoryHandle=null
 
 const prog=document.getElementById("prog")
 const time=document.getElementById("time")
@@ -280,7 +282,24 @@ document.getElementById("recBtn").innerText="Record"
 
 const stream=await navigator.mediaDevices.getUserMedia({audio:true})
 
-rec=new MediaRecorder(stream)
+// Determine best MIME type for recording
+const types=[
+"audio/webm;codecs=opus",
+"audio/webm",
+"audio/ogg;codecs=opus",
+"audio/mp4",
+"audio/mpeg"
+]
+
+mimeType=""
+for(let t of types){
+if(MediaRecorder.isTypeSupported(t)){
+mimeType=t
+break
+}
+}
+
+rec=new MediaRecorder(stream, mimeType ? {mimeType} : {})
 
 chunks=[]
 
@@ -290,7 +309,8 @@ if(e.data.size>0) chunks.push(e.data)
 
 rec.onstop=()=>{
 
-recordedBlob=new Blob(chunks)
+// Create blob with proper MIME type
+recordedBlob=new Blob(chunks, {type: mimeType || "audio/webm"})
 
 const url=URL.createObjectURL(recordedBlob)
 
@@ -342,22 +362,79 @@ document.getElementById("playBtn").innerText="Play"
 
 }
 
-function saveAudio(){
+async function saveAudio(){
 
 if(!recordedBlob) return
 
+// Try modern File System Access API first
+if("showSaveFilePicker" in window){
+
+try{
+
+// Determine file extension from MIME type
+let ext="webm"
+if(mimeType.includes("mp4")) ext="m4a"
+else if(mimeType.includes("mpeg")) ext="mp3"
+else if(mimeType.includes("ogg")) ext="ogg"
+
+const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
+const filename=`studyloop-${timestamp}.${ext}`
+
+const handle=await window.showSaveFilePicker({
+suggestedName:filename,
+types:[{
+description:"Audio Files",
+accept:{"audio/*":[`.${ext}`]}
+}]
+})
+
+const writable=await handle.createWritable()
+await writable.write(recordedBlob)
+await writable.close()
+
+status.innerText="SAVED"
+
+setTimeout(()=>{
+status.innerText="READY"
+},2000)
+
+return
+
+}catch(err){
+// User cancelled or error occurred, fall through to legacy method
+console.log("Save picker cancelled or failed:",err)
+}
+
+}
+
+// Fallback: classic download (no folder control)
 const url=URL.createObjectURL(recordedBlob)
 
 const a=document.createElement("a")
 
 a.href=url
-a.download="studyloop-recording.m4a"
+
+let ext="webm"
+if(mimeType.includes("mp4")) ext="m4a"
+else if(mimeType.includes("mpeg")) ext="mp3"
+else if(mimeType.includes("ogg")) ext="ogg"
+
+const timestamp=new Date().toISOString().replace(/[:.]/g,"-").slice(0,19)
+a.download=`studyloop-${timestamp}.${ext}`
 
 document.body.appendChild(a)
 
 a.click()
 
 document.body.removeChild(a)
+
+URL.revokeObjectURL(url)
+
+status.innerText="DOWNLOADED"
+
+setTimeout(()=>{
+status.innerText="READY"
+},2000)
 
 }
 
