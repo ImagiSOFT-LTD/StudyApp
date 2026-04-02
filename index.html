@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
@@ -18,6 +20,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono&display=swap" rel="stylesheet">
 
 <style>
+
 :root{
 --bg:#0d0f0e;
 --surface:#141714;
@@ -55,9 +58,36 @@ font-weight:400;
 margin:0;
 }
 
-.header h1 span{
+.header span{
 color:var(--accent);
 font-style:italic;
+}
+
+.top-bar{
+position:absolute;
+top:20px;
+left:20px;
+right:20px;
+display:flex;
+justify-content:space-between;
+}
+
+.icon-btn{
+background:var(--surface);
+border:1px solid var(--border);
+color:var(--text-hi);
+width:42px;
+height:42px;
+border-radius:12px;
+font-size:18px;
+display:flex;
+align-items:center;
+justify-content:center;
+cursor:pointer;
+}
+
+.icon-btn:active{
+opacity:.7;
 }
 
 .ring-wrap{
@@ -100,12 +130,30 @@ justify-content:center;
 font-size:22px;
 }
 
+#status{
+font-size:9px;
+color:var(--text-lo);
+margin-top:5px;
+}
+
+.speed-control{
+display:flex;
+align-items:center;
+gap:10px;
+font-size:10px;
+color:var(--text-lo);
+}
+
+.speed-control input{
+width:120px;
+}
+
 .btn-grid{
 display:grid;
-grid-template-columns:1fr 1fr 1fr;
+grid-template-columns:1fr 1fr;
 gap:12px;
 width:100%;
-max-width:400px;
+max-width:320px;
 }
 
 .btn{
@@ -120,8 +168,6 @@ font-size:10px;
 letter-spacing:1px;
 }
 
-.btn:active{opacity:.7}
-
 .btn-rec{
 color:var(--danger);
 border-color:rgba(240,122,122,.3);
@@ -135,31 +181,61 @@ border-color:var(--accent-dim);
 .btn:disabled{
 opacity:.2;
 }
+
 </style>
+
 </head>
 
 <body>
+
+<div class="top-bar">
+
+<button class="icon-btn" onclick="saveAudio()" id="saveBtn" disabled>💾</button>
+
+<button class="icon-btn" onclick="uploadInput.click()">⬆️</button>
+
+</div>
+
+<input type="file" id="uploadInput" accept="audio/*" capture style="display:none">
 
 <div class="header">
 <h1>Study<span>Loop</span></h1>
 </div>
 
 <div class="ring-wrap">
+
 <svg>
-<circle class="track" cx="100" cy="100" r="90"/>
-<circle id="prog" class="progress" cx="100" cy="100" r="90"/>
+
+<circle class="track" cx="100" cy="100" r="90"></circle>
+<circle id="prog" class="progress" cx="100" cy="100" r="90"></circle>
+
 </svg>
 
 <div class="ring-info">
+
 <div id="time">0:00</div>
-<div id="status" style="font-size:9px;color:var(--text-lo);margin-top:5px;">READY</div>
+<div id="status">READY</div>
+
 </div>
+
+</div>
+
+<div class="speed-control">
+
+<label>Speed</label>
+
+<input type="range" id="speed" min="0.5" max="2" step="0.1" value="1">
+
+<span id="speedLabel">1.0×</span>
+
 </div>
 
 <div class="btn-grid">
+
 <button class="btn btn-rec" onclick="toggleRec()" id="recBtn">Record</button>
+
 <button class="btn btn-play" onclick="togglePlay()" id="playBtn" disabled>Play</button>
-<button class="btn" onclick="saveAudio()" id="saveBtn" disabled>Save</button>
+
 </div>
 
 <script>
@@ -174,11 +250,18 @@ let sec=0
 const prog=document.getElementById("prog")
 const time=document.getElementById("time")
 const status=document.getElementById("status")
+const speedSlider=document.getElementById("speed")
+const speedLabel=document.getElementById("speedLabel")
+const uploadInput=document.getElementById("uploadInput")
 
 function updateTimer(){
+
 sec++
+
 time.innerText=Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")
+
 prog.style.strokeDashoffset=565-(565*(sec/300))
+
 }
 
 async function toggleRec(){
@@ -186,20 +269,18 @@ async function toggleRec(){
 if(rec && rec.state==="recording"){
 
 rec.stop()
+
 clearInterval(timer)
 
 status.innerText="READY"
+
 document.getElementById("recBtn").innerText="Record"
 
 }else{
 
 const stream=await navigator.mediaDevices.getUserMedia({audio:true})
 
-let options={}
-if(MediaRecorder.isTypeSupported("audio/mp4")) options.mimeType="audio/mp4"
-else if(MediaRecorder.isTypeSupported("audio/webm")) options.mimeType="audio/webm"
-
-rec=new MediaRecorder(stream,options)
+rec=new MediaRecorder(stream)
 
 chunks=[]
 
@@ -209,26 +290,18 @@ if(e.data.size>0) chunks.push(e.data)
 
 rec.onstop=()=>{
 
-recordedBlob=new Blob(chunks,{type:rec.mimeType})
+recordedBlob=new Blob(chunks)
 
 const url=URL.createObjectURL(recordedBlob)
 
 audio=new Audio(url)
+
 audio.loop=true
-audio.preload="auto"
-audio.setAttribute("playsinline","")
-audio.setAttribute("webkit-playsinline","")
+audio.playbackRate=parseFloat(speedSlider.value)
 
 document.getElementById("playBtn").disabled=false
 document.getElementById("saveBtn").disabled=false
 
-const reader=new FileReader()
-
-reader.onloadend=function(){
-localStorage.setItem("studyloop_recording",reader.result)
-}
-
-reader.readAsDataURL(recordedBlob)
 }
 
 rec.start()
@@ -236,6 +309,7 @@ rec.start()
 sec=0
 
 status.innerText="RECORDING"
+
 document.getElementById("recBtn").innerText="Stop"
 
 timer=setInterval(updateTimer,1000)
@@ -253,6 +327,7 @@ if(audio.paused){
 audio.play()
 
 status.innerText="LOOPING"
+
 document.getElementById("playBtn").innerText="Pause"
 
 }else{
@@ -260,6 +335,7 @@ document.getElementById("playBtn").innerText="Pause"
 audio.pause()
 
 status.innerText="PAUSED"
+
 document.getElementById("playBtn").innerText="Play"
 
 }
@@ -285,23 +361,32 @@ document.body.removeChild(a)
 
 }
 
-window.addEventListener("load",()=>{
+uploadInput.addEventListener("change",function(){
 
-const data=localStorage.getItem("studyloop_recording")
+const file=this.files[0]
 
-if(data){
+if(!file) return
 
-audio=new Audio(data)
+const url=URL.createObjectURL(file)
+
+audio=new Audio(url)
 
 audio.loop=true
-audio.preload="auto"
-audio.setAttribute("playsinline","")
-audio.setAttribute("webkit-playsinline","")
+audio.playbackRate=parseFloat(speedSlider.value)
 
 document.getElementById("playBtn").disabled=false
-document.getElementById("saveBtn").disabled=false
 
-}
+status.innerText="AUDIO LOADED"
+
+})
+
+speedSlider.addEventListener("input",()=>{
+
+const rate=parseFloat(speedSlider.value)
+
+speedLabel.innerText=rate.toFixed(1)+"×"
+
+if(audio) audio.playbackRate=rate
 
 })
 
